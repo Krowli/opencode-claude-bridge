@@ -1,0 +1,82 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  lint:
+    name: Shell lint (bash -n + shellcheck)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install shellcheck
+        run: sudo apt-get update && sudo apt-get install -y shellcheck
+      - name: Syntax and lint
+        run: |
+          set -euo pipefail
+          for f in install.sh uninstall.sh scripts/smoke-test.sh; do
+            bash -n "$f"
+            shellcheck -x "$f"
+          done
+
+  install:
+    name: Installer test (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    env:
+      PROXY_HOME: ${{ runner.temp }}/ocb/proxy
+      CONFIG_DIR: ${{ runner.temp }}/ocb/config
+      PLUGIN_DIR: ${{ runner.temp }}/ocb/config/plugins
+      OPENCODE_CONFIG: ${{ runner.temp }}/ocb/config/opencode.jsonc
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+
+      - name: Template render matches golden
+        run: |
+          sed -e 's|__PROXY_HOME__|/tmp/ocb-sample/proxy|g' \
+              -e 's|__BUN_BIN__|/usr/local/bin/bun|g' \
+              plugin/opencode-claude-proxy.ts > "$RUNNER_TEMP/render.ts"
+          diff -u docs/golden/opencode-claude-proxy.render.ts "$RUNNER_TEMP/render.ts"
+
+      - name: Full install to temp paths
+        run: |
+          set -euo pipefail
+          mkdir -p "$CONFIG_DIR"
+          printf '{\n}\n' > "$OPENCODE_CONFIG"
+          bash install.sh
+
+      - name: Verify artifacts
+        run: |
+          set -euo pipefail
+          test -x "$PROXY_HOME/proxy.mjs"
+          test -d "$PROXY_HOME/node_modules/@openchamber/opencode-claude"
+          test -f "$PLUGIN_DIR/opencode-claude-proxy.ts"
+          ! grep -q '__PROXY_HOME__' "$PLUGIN_DIR/opencode-claude-proxy.ts"
+          ! grep -q '__BUN_BIN__' "$PLUGIN_DIR/opencode-claude-proxy.ts"
+          test -f "$CONFIG_DIR/node_modules/@opencode/plugin/package.json"
+          nmodels="$(node -e 'const c=JSON.parse(require("fs").readFileSync(process.env.OPENCODE_CONFIG,"utf8")); console.log(Object.keys(c.providers["claude-code"].models).length)')"
+          test "$nmodels" = "6"
+          echo "artifacts OK ($nmodels models)"
+
+      - name: Idempotent re-run
+        run: bash install.sh
+
+      - name: JSONC config -> graceful manual fallback
+        run: |
+          set -euo pipefail
+          printf '// comment\n{\n  "providers": {}\n}\n' > "$RUNNER_TEMP/commented.jsonc"
+          set +e
+          OPENCODE_CONFIG="$RUNNER_TEMP/commented.jsonc" bash install.sh > "$RUNNER_TEMP/jsonc.out" 2>&1
+          rc=$?
+          set -e
+          test "$rc" -eq 0
+          grep -q 'manual' "$RUNNER_TEMP/jsonc.out"
+
+      - name: Dry-run preview works
+        run: bash install.sh --dry-run --no-config

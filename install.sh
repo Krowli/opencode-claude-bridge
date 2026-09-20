@@ -59,6 +59,7 @@ install_file() { # src dst
 emit() { # dst  ; payload on stdin
   if [ "$DRY_RUN" -eq 1 ]; then
     printf '%sdry-run:%s write %s\n' "$c_dim" "$c_rst" "$1"
+    cat > /dev/null 2>&1 || true   # drain stdin so upstream pipes don't SIGPIPE
     return 0
   fi
   cat > "$1"
@@ -78,7 +79,7 @@ npm_in() { # dir [extra args...]
 if ! command -v claude >/dev/null 2>&1; then
   warn "claude CLI is not on PATH. Install Claude Code and sign in with: claude auth login"
 elif [ "$DRY_RUN" -eq 0 ]; then
-  if echo "$(claude auth status 2>/dev/null || true)" | grep -q '"loggedIn"[[:space:]]*:[[:space:]]*false'; then
+  if claude auth status 2>/dev/null | grep -q '"loggedIn"[[:space:]]*:[[:space:]]*false'; then
     warn "claude reports: not logged in. Run: claude auth login"
   else
     say "claude auth: OK (subscription found)"
