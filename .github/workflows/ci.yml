@@ -28,11 +28,6 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest]
     runs-on: ${{ matrix.os }}
-    env:
-      PROXY_HOME: ${{ runner.temp }}/ocb/proxy
-      CONFIG_DIR: ${{ runner.temp }}/ocb/config
-      PLUGIN_DIR: ${{ runner.temp }}/ocb/config/plugins
-      OPENCODE_CONFIG: ${{ runner.temp }}/ocb/config/opencode.jsonc
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
@@ -47,6 +42,10 @@ jobs:
       - name: Full install to temp paths
         run: |
           set -euo pipefail
+          export PROXY_HOME="$RUNNER_TEMP/ocb/proxy"
+          export CONFIG_DIR="$RUNNER_TEMP/ocb/config"
+          export PLUGIN_DIR="$CONFIG_DIR/plugins"
+          export OPENCODE_CONFIG="$CONFIG_DIR/opencode.jsonc"
           mkdir -p "$CONFIG_DIR"
           printf '{\n}\n' > "$OPENCODE_CONFIG"
           bash install.sh
@@ -54,22 +53,41 @@ jobs:
       - name: Verify artifacts
         run: |
           set -euo pipefail
+          export PROXY_HOME="$RUNNER_TEMP/ocb/proxy"
+          export CONFIG_DIR="$RUNNER_TEMP/ocb/config"
+          export PLUGIN_DIR="$CONFIG_DIR/plugins"
+          export OPENCODE_CONFIG="$CONFIG_DIR/opencode.jsonc"
           test -x "$PROXY_HOME/proxy.mjs"
           test -d "$PROXY_HOME/node_modules/@openchamber/opencode-claude"
           test -f "$PLUGIN_DIR/opencode-claude-proxy.ts"
-          ! grep -q '__PROXY_HOME__' "$PLUGIN_DIR/opencode-claude-proxy.ts"
-          ! grep -q '__BUN_BIN__' "$PLUGIN_DIR/opencode-claude-proxy.ts"
+          if grep -q '__PROXY_HOME__' "$PLUGIN_DIR/opencode-claude-proxy.ts"; then
+            echo "placeholder left in rendered plugin" >&2
+            exit 1
+          fi
+          if grep -q '__BUN_BIN__' "$PLUGIN_DIR/opencode-claude-proxy.ts"; then
+            echo "placeholder left in rendered plugin" >&2
+            exit 1
+          fi
           test -f "$CONFIG_DIR/node_modules/@opencode/plugin/package.json"
           nmodels="$(node -e 'const c=JSON.parse(require("fs").readFileSync(process.env.OPENCODE_CONFIG,"utf8")); console.log(Object.keys(c.providers["claude-code"].models).length)')"
           test "$nmodels" = "6"
           echo "artifacts OK ($nmodels models)"
 
       - name: Idempotent re-run
-        run: bash install.sh
+        run: |
+          set -euo pipefail
+          export PROXY_HOME="$RUNNER_TEMP/ocb/proxy"
+          export CONFIG_DIR="$RUNNER_TEMP/ocb/config"
+          export PLUGIN_DIR="$CONFIG_DIR/plugins"
+          export OPENCODE_CONFIG="$CONFIG_DIR/opencode.jsonc"
+          bash install.sh
 
       - name: JSONC config -> graceful manual fallback
         run: |
           set -euo pipefail
+          export PROXY_HOME="$RUNNER_TEMP/ocb/proxy"
+          export CONFIG_DIR="$RUNNER_TEMP/ocb/config"
+          export PLUGIN_DIR="$CONFIG_DIR/plugins"
           printf '// comment\n{\n  "providers": {}\n}\n' > "$RUNNER_TEMP/commented.jsonc"
           set +e
           OPENCODE_CONFIG="$RUNNER_TEMP/commented.jsonc" bash install.sh > "$RUNNER_TEMP/jsonc.out" 2>&1
