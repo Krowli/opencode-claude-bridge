@@ -69,6 +69,18 @@ jobs:
             exit 1
           fi
           test -f "$CONFIG_DIR/node_modules/@opencode/plugin/package.json"
+          # GHSA-8988-4f7v-96qf: @opentelemetry/core must be >= 2.8.0 (install.sh hardens via overrides)
+          core_ver="$(node -e 'try{console.log(require(process.argv[1]).version)}catch(e){}' "$CONFIG_DIR/node_modules/@opentelemetry/core/package.json")"
+          if [ -z "$core_ver" ]; then
+            echo "OpenTelemetry core not installed in config tree" >&2
+            exit 1
+          fi
+          otel_ok="$(printf '%s' "$core_ver" | awk -F. '{ print ($1>2 || ($1==2 && $2>=8)) ? "ok" : "bad" }')"
+          if [ "$otel_ok" != "ok" ]; then
+            echo "vulnerable @opentelemetry/core $core_ver (<2.8.0, GHSA-8988-4f7v-96qf)" >&2
+            exit 1
+          fi
+          echo "OpenTelemetry core $core_ver (>=2.8.0, hardened)"
           nmodels="$(node -e 'const c=JSON.parse(require("fs").readFileSync(process.env.OPENCODE_CONFIG,"utf8")); console.log(Object.keys(c.providers["claude-code"].models).length)')"
           test "$nmodels" = "6"
           echo "artifacts OK ($nmodels models)"

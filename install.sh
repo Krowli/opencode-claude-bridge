@@ -18,7 +18,7 @@
 #   OPENCODE_CONFIG path to opencode.jsonc (default: $CONFIG_DIR/opencode.jsonc)
 #   BUN_BIN         Bun executable (default: resolved via command -v)
 #   VERSION         pin of @openchamber/opencode-claude (default: 0.14.0)
-#   PLUGIN_SDK      pin of @opencode/plugin (default: 2.0.10)
+#   PLUGIN_SDK      pin of @opencode/plugin (default: 2.0.11)
 #
 set -euo pipefail
 
@@ -29,7 +29,7 @@ PLUGIN_DIR="${PLUGIN_DIR:-$CONFIG_DIR/plugins}"
 OPENCODE_CONFIG="${OPENCODE_CONFIG:-$CONFIG_DIR/opencode.jsonc}"
 BUN_BIN="${BUN_BIN:-$(command -v bun || true)}"
 VERSION="${VERSION:-0.14.0}"
-PLUGIN_SDK="${PLUGIN_SDK:-2.0.10}"
+PLUGIN_SDK="${PLUGIN_SDK:-2.0.11}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DRY_RUN=0
@@ -74,6 +74,46 @@ npm_in() { # dir [extra args...]
   fi
 }
 
+# GHSA-8988-4f7v-96qf: @opentelemetry/core < 2.8.0 has unbounded memory
+# allocation in W3C Baggage propagation. The OpenCode plugin SDK pins
+# vulnerable versions exactly (@opcode/util@2.0.x -> @opentelemetry/core
+# 2.6.1), and plain SDK updates don't pull the fix — only npm overrides
+# force the tree onto 2.11.0. Idempotent, applied even in dry-run planning.
+apply_otel_overrides() { # dir (contains package.json)
+  local dir="$1" pkg="$1/package.json"
+  [ -f "$pkg" ] || return 0
+  if [ "$DRY_RUN" -eq 1 ]; then
+    printf '%sdry-run:%s add @opentelemetry overrides to %s (GHSA-8988-4f7v-96qf)\n' "$c_dim" "$c_rst" "$pkg"
+    return 0
+  fi
+  node - "$pkg" <<'NODE'
+const fs = require("node:fs");
+const [pkg] = process.argv.slice(2);
+const p = JSON.parse(fs.readFileSync(pkg, "utf8"));
+p.overrides = Object.assign(p.overrides || {}, {
+  "@opentelemetry/core": "2.11.0",
+  "@opentelemetry/resources": "2.11.0",
+  "@opentelemetry/sdk-trace-base": "2.11.0",
+  "@opentelemetry/sdk-trace-node": "2.11.0",
+  "@opentelemetry/api": "1.9.0",
+});
+fs.writeFileSync(pkg, JSON.stringify(p, null, 2) + "\n");
+console.log("otel overrides applied");
+NODE
+  npm_in "$dir"
+}
+
+otel_core_ok() { # dir -> true if @opentelemetry/core >= 2.8.0 (fix for GHSA-8988-4f7v-96qf)
+  node - "$1" <<'NODE'
+const [dir] = process.argv.slice(2);
+try {
+  const v = require(dir + "/node_modules/@opentelemetry/core/package.json").version;
+  const [maj, min] = v.split(".").map(Number);
+  process.exit((maj > 2 || (maj === 2 && min >= 8)) ? 0 : 1);
+} catch { process.exit(2); } // not installed -> not our concern
+NODE
+}
+
 # --- preflight -------------------------------------------------------------
 [ -n "$BUN_BIN" ] || die "Bun not found. Install it: curl -fsSL https://bun.sh/install | bash"
 if ! command -v claude >/dev/null 2>&1; then
@@ -105,6 +145,12 @@ npm_in "$PROXY_HOME"
 say "2/4  plugin SDK -> $CONFIG_DIR/node_modules  (@opencode/plugin@$PLUGIN_SDK)"
 mkdir -p "$CONFIG_DIR"
 npm_in "$CONFIG_DIR" "@opencode/plugin@$PLUGIN_SDK"
+# 2b/4  harden OpenTelemetry pulled in by the SDK (GHSA-8988-4f7v-96qf)
+if otel_core_ok "$CONFIG_DIR"; then
+  say "      otel: OpenTelemetry already >= 2.8.0, no overrides needed"
+else
+  apply_otel_overrides "$CONFIG_DIR"
+fi
 
 # --- 3/4 integration files -------------------------------------------------
 say "3/4  integration files"
