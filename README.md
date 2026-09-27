@@ -145,72 +145,7 @@ docs/AUDIT.md                       # security review
 bash uninstall.sh
 ```
 
----
+## License
 
-# Русский
-
-Подключение **подписки Claude Max** к **OpenCode V2** через локальный прокси:
-без API-ключа, без сторонних пакетов, с закреплёнными версиями.
-
-> [!WARNING]
-> **Личный проект, используете на свой страх и риск.** По правилам Anthropic
-> ([документация Agent SDK](https://code.claude.com/docs/en/agent-sdk/overview))
-> без их одобрения сторонним разработчикам нельзя давать вход через claude.ai и
-> лимиты подписки в своих продуктах. Проект не связан с Anthropic и OpenCode и
-> ими не одобрен. Он опубликован «как есть» для личного использования автора;
-> если вы его запускаете, все последствия для вашего аккаунта Claude — на вас.
-> Форкайте и меняйте как хотите.
-
-## Установка
-
-```bash
-git clone https://github.com/Krowli/opencode-claude-bridge.git
-cd opencode-claude-bridge
-bash install.sh        # --dry-run — показать план; --no-config — не трогать конфиг
-```
-
-Скрипт идемпотентен и повторяет ровно то, что уже проверено на рабочей машине:
-прокси (`proxy/lib`, свой код) в `~/.local/share/opencode-claude/`, V2-плагин в
-`~/.config/opencode/plugins/`, провайдер `claude-code` в `opencode.jsonc`.
-
-## Проверка
-
-```bash
-curl -s http://127.0.0.1:8787/health
-bash scripts/smoke-test.sh
-opencode run --model claude-code/sonnet "привет"
-```
-
-## Обновление
-
-```bash
-cd opencode-claude-bridge && git pull && bash install.sh   # затем перезапустить OpenCode
-```
-
-Когда выходит новый [релиз](https://github.com/Krowli/opencode-claude-bridge/releases),
-OpenCode при запуске показывает уведомление с этой командой (плагин
-`plugins/opencode-claude-update/tui.ts` запрашивает последний релиз у
-`api.github.com`). Чтобы отключить — удалить эту папку.
-
-Выпустить обновление (мейнтейнер): запушить в `main`, затем
-`gh release create vX.Y.Z --generate-notes`.
-
-Модели: `sonnet`, `opus`, `fable`, `haiku`, `claude-opus-5-5[1m]` (Opus 5.5),
-`claude-fable-5-1[1m]` (Fable 5.1). Варианты усиления `low → max`
-(у haiku нет), например `claude-code/sonnet#high`. Выбор в TUI: `/models` → Claude Code.
-
-## Почему так устроено
-
-- **Авторизация** — только в официальном CLI `claude`; прокси креды не читает
-  и не отправляет.
-- **Не через launchd**: Claude Code 2.x хранит OAuth в macOS Keychain, а
-  launchd-демоны изолированы от него. Плагин запускает прокси как дочерний
-  процесс сервера OpenCode (пользовательская сессия → Keychain доступен).
-- **Свой код**: прокси лежит в репозитории (`proxy/lib`); зависимости —
-  только официальный Claude Agent SDK и `zod`, точные версии + lockfile.
-- Аудит кода: [docs/AUDIT.md](docs/AUDIT.md).
-
-## Лицензия
-
-MIT. `proxy/lib` включает код под лицензией MIT — её текст в
-`proxy/lib/LICENSE`.
+MIT (see [LICENSE](LICENSE)). `proxy/lib` includes MIT-licensed code; its
+notice is in [proxy/lib/LICENSE](proxy/lib/LICENSE).
