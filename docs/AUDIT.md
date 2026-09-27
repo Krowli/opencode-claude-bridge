@@ -47,7 +47,8 @@ process listens on 127.0.0.1 only and tracing is off by default.
 
 Also verified: no secrets in the repo or config (only the dummy
 `"apiKey": "claude-code-proxy"`), no runtime endpoint outside localhost +
-Anthropic, no `eval`/keychain/`openssl` calls in the Agent SDK / MCP SDK dists.
+Anthropic (plus one unauthenticated GET to `api.github.com` per OpenCode
+launch from the update-notice TUI plugin, added later), no `eval`/keychain/`openssl` calls in the Agent SDK / MCP SDK dists.
 
 ## What this repo adds on top (our fixes)
 

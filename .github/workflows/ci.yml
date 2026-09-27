@@ -60,6 +60,13 @@ jobs:
           test -x "$PROXY_HOME/proxy.mjs"
           test -d "$PROXY_HOME/node_modules/@openchamber/opencode-claude"
           test -f "$PLUGIN_DIR/opencode-claude-proxy.ts"
+          upd="$PLUGIN_DIR/opencode-claude-update/tui.ts"
+          test -f "$upd"
+          if grep -q '__INSTALLED_COMMIT__\|__REPO_DIR__' "$upd"; then
+            echo "update plugin placeholders not rendered" >&2
+            exit 1
+          fi
+          grep -q "$(git rev-parse HEAD)" "$upd"
           if grep -q '__PROXY_HOME__' "$PLUGIN_DIR/opencode-claude-proxy.ts"; then
             echo "placeholder left in rendered plugin" >&2
             exit 1

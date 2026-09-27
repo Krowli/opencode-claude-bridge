@@ -160,6 +160,15 @@ mkdir -p "$PLUGIN_DIR"
 sed -e "s|__PROXY_HOME__|$PROXY_HOME|g" -e "s|__BUN_BIN__|$BUN_BIN|g" \
   "$SCRIPT_DIR/plugin/opencode-claude-proxy.ts" \
   | emit "$PLUGIN_DIR/opencode-claude-proxy.ts"
+# Update notice (TUI toast) — needs the commit this install came from.
+if INSTALLED_COMMIT="$(git -C "$SCRIPT_DIR" rev-parse HEAD 2>/dev/null)"; then
+  mkdir -p "$PLUGIN_DIR/opencode-claude-update"
+  sed -e "s|__INSTALLED_COMMIT__|$INSTALLED_COMMIT|g" -e "s|__REPO_DIR__|$SCRIPT_DIR|g" \
+    "$SCRIPT_DIR/plugin/opencode-claude-update.tui.ts" \
+    | emit "$PLUGIN_DIR/opencode-claude-update/tui.ts"
+else
+  warn "not a git checkout — update notice not installed (clone with git to get it)"
+fi
 
 # --- 4/4 provider config ---------------------------------------------------
 if [ "$DO_CONFIG" -eq 1 ]; then

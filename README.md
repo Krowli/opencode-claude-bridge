@@ -83,6 +83,11 @@ Pick models in the TUI with `/models` → **Claude Code**.
 The installer adds models missing from your `claude-code` provider and leaves
 existing entries untouched.
 
+OpenCode shows a toast when this repo has new commits: on each launch the
+TUI plugin `plugins/opencode-claude-update/tui.ts` asks `api.github.com` for
+the latest `main` commit (nothing is sent but that request). Delete that
+folder to turn it off.
+
 Every model ships **effort variants** (`low … max`) that map to the
 `x-opencode-claude-effort` header, controlling Claude's adaptive thinking.
 
@@ -143,6 +148,9 @@ opencode run --model claude-code/sonnet "привет"
 ```
 
 Обновление (новые модели): `git pull && bash install.sh`, затем перезапустить OpenCode.
+Когда в репозитории есть новые коммиты, OpenCode при запуске покажет уведомление
+(плагин `plugins/opencode-claude-update/tui.ts` запрашивает последний коммит
+`main` у `api.github.com`). Чтобы отключить — удалить эту папку.
 
 Модели: `sonnet`, `opus`, `fable`, `haiku`, `claude-opus-5-5[1m]` (Opus 5.5),
 `claude-fable-5-1[1m]` (Fable 5.1) (у каждой варианты усиления

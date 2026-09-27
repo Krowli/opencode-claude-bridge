@@ -13,7 +13,7 @@ PLUGIN_DIR="${PLUGIN_DIR:-$HOME/.config/opencode/plugins}"
 CONFIG_DIR="${CONFIG_DIR:-$HOME/.config/opencode}"
 
 if [ "${1:-}" != "-y" ]; then
-  read -r -p "Remove $PROXY_HOME and $PLUGIN_DIR/opencode-claude-proxy.ts? [y/N] " ans
+  read -r -p "Remove $PROXY_HOME, $PLUGIN_DIR/opencode-claude-proxy.ts and $PLUGIN_DIR/opencode-claude-update? [y/N] " ans
   [[ "$ans" =~ ^[yY]$ ]] || { echo "aborted"; exit 0; }
 fi
 
@@ -25,5 +25,6 @@ fi
 
 rm -rf "$PROXY_HOME"
 rm -f "$PLUGIN_DIR/opencode-claude-proxy.ts"
+rm -rf "$PLUGIN_DIR/opencode-claude-update"
 
 echo "Removed. You can also drop provider 'claude-code' from $CONFIG_DIR/opencode.jsonc."
