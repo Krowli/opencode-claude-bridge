@@ -1,7 +1,24 @@
 # opencode-claude-bridge
 
+[![CI](https://github.com/Krowli/opencode-claude-bridge/actions/workflows/ci.yml/badge.svg)](https://github.com/Krowli/opencode-claude-bridge/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/Krowli/opencode-claude-bridge)](https://github.com/Krowli/opencode-claude-bridge/releases/latest)
+[![License: MIT](https://img.shields.io/github/license/Krowli/opencode-claude-bridge)](LICENSE)
+[![OpenCode V2](https://img.shields.io/badge/OpenCode-V2-black)](https://opencode.ai)
+[![Bun](https://img.shields.io/badge/runtime-Bun-f9f1e1?logo=bun&logoColor=black)](https://bun.sh)
+[![Platform: macOS](https://img.shields.io/badge/platform-macOS-lightgrey?logo=apple)](#requirements)
+
 Use your **Claude Max subscription** (Claude Code CLI) inside **OpenCode V2** —
 no API key, no third-party packages at runtime, no auto-updates.
+
+> [!WARNING]
+> **Personal project, use at your own risk.** Anthropic's Agent SDK docs say:
+> *"Unless previously approved, Anthropic does not allow third party developers
+> to offer claude.ai login or rate limits for their products, including agents
+> built on the Claude Agent SDK."*
+> ([source](https://code.claude.com/docs/en/agent-sdk/overview)). This repo is
+> not affiliated with or approved by Anthropic or OpenCode. It is published
+> as-is for the author's own use; if you run it, you accept any consequences
+> for your Claude account yourself. Fork it and change it as you like.
 
 ```
 OpenCode V2 (provider "claude-code", openai-compatible)
@@ -119,8 +136,8 @@ docs/AUDIT.md                       # security review
 - Credentials stay in the `claude` CLI's keychain store; nothing is copied to
   disk by this repo.
 - Version pins mean the running code only changes when **you** update it.
-- Using your subscription this way goes through the official Anthropic Agent
-  SDK — check Anthropic's terms for your use case.
+- See the warning at the top: this use of a subscription is not approved by
+  Anthropic.
 
 ## Uninstall
 
@@ -134,6 +151,15 @@ bash uninstall.sh
 
 Подключение **подписки Claude Max** к **OpenCode V2** через локальный прокси:
 без API-ключа, без сторонних пакетов, с закреплёнными версиями.
+
+> [!WARNING]
+> **Личный проект, используете на свой страх и риск.** По правилам Anthropic
+> ([документация Agent SDK](https://code.claude.com/docs/en/agent-sdk/overview))
+> без их одобрения сторонним разработчикам нельзя давать вход через claude.ai и
+> лимиты подписки в своих продуктах. Проект не связан с Anthropic и OpenCode и
+> ими не одобрен. Он опубликован «как есть» для личного использования автора;
+> если вы его запускаете, все последствия для вашего аккаунта Claude — на вас.
+> Форкайте и меняйте как хотите.
 
 ## Установка
 
