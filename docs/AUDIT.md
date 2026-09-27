@@ -1,59 +1,56 @@
-# Security audit — @openchamber/opencode-claude@0.14.0
+# Security audit — proxy (`proxy/lib`)
 
-Reviewed the exact pinned version vendored by this repo (source read from the
-npm cache, ~4 200 lines, `dist/*.js` + entry points). Context: the package is
-community software, so we checked it line-by-line before wiring it to a paid
-subscription.
+The proxy code lives in this repo (`proxy/lib/*.ts`, ~4 500 lines, run by Bun).
+It was taken in as source from MIT-licensed code (notice kept in
+`proxy/lib/LICENSE`, as the license requires) and is maintained here; nothing
+is downloaded from that project at install or run time. Only the files the
+proxy actually imports were taken — no OpenCode plugin, no CLI installer, no
+CLI sign-in flow.
 
-## Findings
+## Findings (2026-09-27)
 
 | Check | Result |
 | --- | --- |
-| Network endpoints in code | Only `http://127.0.0.1` (local proxy), `claude.ai/install.sh` and `claude.com` (official Anthropic). No third-party receivers. |
-| Credential access | None. Does not read `~/.claude` credentials; only reads Claude's session `.jsonl` files (resume detection), never tokens. |
-| Process spawning | Only the `claude` CLI via the official Agent SDK; a CLI installer (`npm i` / official install script) that runs only when the CLI is missing; a Windows `taskkill` cleanup. |
-| eval / obfuscation / telemetry | None. Only base64 usage is the effort-level header encoding. |
-| Disk writes | Only `~/.local/share/opencode-claude/{sessions.json, rate-limit.json}` + logs. |
-| Dependencies | Official: `@anthropic-ai/claude-agent-sdk`, `zod`, `@opencode-ai/plugin` types. |
-| Auth hygiene | `auth-env.js` strips `ANTHROPIC_API_KEY` / `ANTHROPIC_AUTH_TOKEN` / `CLAUDE_CODE_OAUTH_TOKEN` from the child env to force subscription mode — stray keys cannot leak into the spawned CLI. |
+| Network endpoints in code | None besides `http://127.0.0.1` (the proxy itself). Model traffic goes through the official Agent SDK → `claude` CLI. |
+| Inbound requests | Bound to 127.0.0.1; requests with an `Origin` header or a non-loopback `Host` are refused (`isTrustedLocalRequest`), so a web page cannot spend the subscription via CSRF/DNS rebinding. |
+| Credential access | None. Reads only Claude's session `.jsonl` file names under `~/.claude/projects` to decide whether a session can be resumed; never tokens. |
+| Process spawning | The `claude` CLI via the Agent SDK; probes `claude --version`, `claude auth status --json`, `npm prefix -g` (to locate the CLI); Windows-only `taskkill` cleanup. |
+| Claude Code tools | Built-in tools are never enabled (`tools: []`). Every tool call goes through OpenCode, which owns permissions. Chat turns do not load the user's MCP servers or claude.ai connectors. |
+| eval / obfuscation / telemetry | None. base64 is used only for the effort header encoding. |
+| Disk writes | `~/.local/share/opencode-claude/{sessions.json, rate-limit.json, models.json}` and `debug.log` when `OPENCODE_CLAUDE_DEBUG=1`. |
+| Dependencies | Official only: `@anthropic-ai/claude-agent-sdk@0.3.224`, `zod@4.4.3`, exact pins + `package-lock.json`, installed with `npm ci`. |
+| Auth hygiene | `auth-env.ts` strips `ANTHROPIC_API_KEY` / `ANTHROPIC_AUTH_TOKEN` / `CLAUDE_CODE_OAUTH_TOKEN` from the child env to force subscription mode. |
 
-## Verdict
+`npm audit` on the proxy tree: **0 vulnerabilities**. Offline regression
+suite: `cd proxy && bun test/run.ts` (runs in CI).
 
-Clean. No credential exfiltration, no unknown outbound traffic, no obfuscated
-code. Residual, unavoidable risks of any npm software apply (maintainer trust,
-dependency tree). Mitigations in this repo: exact version pin, local vendored
-copy, no auto-updates.
+## OpenCode plugin SDK tree
 
-## Dependency-tree scan (2026-09-20)
+`@opencode/plugin` (installed into `~/.config/opencode` so the plugin files
+resolve their types/imports) pulled in `@opentelemetry/core 2.6.1`, affected by
+GHSA-8988-4f7v-96qf (unbounded memory allocation in W3C Baggage propagation,
+`< 2.8.0`), via `@opencode/plugin -> @opencode/util -> @effect/opentelemetry`.
+`@opencode/util` pins those versions exactly, so `install.sh` force-upgrades
+the OpenTelemetry packages through npm `overrides` (→ 2.11.0) and CI asserts
+`core >= 2.8.0`. Practical exploitability here is near zero: loopback only,
+tracing off by default.
 
-Beyond the line-by-line audit, we scanned the two install trees with `npm audit`
-and checked egress endpoints of the runtime packages:
+## Outbound requests made by this repo's own code
 
-| Tree | npm audit | Note |
-| --- | --- | --- |
-| Proxy runtime (`@openchamber/opencode-claude` + Agent SDK, 125 pkgs) | **0 vulnerabilities** | Network-exposed surface (127.0.0.1:8787); clean |
-| OpenCode plugin SDK (`@opencode/plugin`, 281 pkgs) | **11 moderate → 0 after fix** | All from `@opentelemetry/*`, fixed via overrides (below) |
+- One unauthenticated GET to `api.github.com/repos/Krowli/opencode-claude-bridge/releases/latest`
+  per OpenCode launch, from the update-notice TUI plugin. Nothing is sent
+  besides that request. Delete `~/.config/opencode/plugins/opencode-claude-update`
+  to turn it off.
 
-The 11 moderate findings were a single advisory, GHSA-8988-4f7v-96qf
-(OpenTelemetry Core: unbounded memory allocation in W3C Baggage propagation,
-`@opentelemetry/core < 2.8.0`), pulled in transitively as
-`@opencode/plugin -> @opencode/util -> @effect/opentelemetry -> @opentelemetry/core 2.6.1`.
-`@opencode/util` pins those versions exactly, so plain SDK updates do not pull
-the fix; `install.sh` now force-upgrades the OpenTelemetry packages in the
-config tree through npm `overrides` (`core`/`resources`/`sdk-trace-base`/
-`sdk-trace-node` → 2.11.0) and CI asserts `core >= 2.8.0` after install.
-Practical exploitability in this deployment is near zero regardless: the
-process listens on 127.0.0.1 only and tracing is off by default.
+No secrets in the repo or config (only the dummy `"apiKey": "claude-code-proxy"`).
 
-Also verified: no secrets in the repo or config (only the dummy
-`"apiKey": "claude-code-proxy"`), no runtime endpoint outside localhost +
-Anthropic (plus one unauthenticated GET to `api.github.com` per OpenCode
-launch from the update-notice TUI plugin, added later), no `eval`/keychain/`openssl` calls in the Agent SDK / MCP SDK dists.
+## What this repo adds
 
-## What this repo adds on top (our fixes)
-
-- `proxy/proxy.mjs` — standalone runner; **duplicate-protection fix**: probes
-  `/health` and exits when a healthy proxy already owns the pinned port.
-- `plugin/opencode-claude-proxy.ts` — V2 plugin to spawn the proxy from the
-  server's user session (fixes the "Not logged in" launchd/keychain issue).
-- Provider config with effort variants (`x-opencode-claude-effort`).
+- `proxy/proxy.mjs` — runner; exits when a healthy proxy already owns the
+  port (no stacked listeners).
+- `plugin/opencode-claude-proxy.ts` — V2 plugin: spawns the proxy from the
+  server's user session (keychain access, fixes launchd "Not logged in") and
+  tags every `claude-code` request with session, request kind, project
+  directory and effort headers.
+- `plugin/opencode-claude-update.tui.ts` — release update notice.
+- Provider config with effort variants (`low … max`).

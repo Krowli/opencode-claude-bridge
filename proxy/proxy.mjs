@@ -6,8 +6,9 @@
  * `claude` CLI (subscription OAuth). Accepts JSON and SSE streaming,
  * plus GET /v1/models and /health for probes.
  *
- * The proxy code comes from the pinned, audited copy of
- * @openchamber/opencode-claude@0.14.0 (vendored, no auto-updates).
+ * The proxy code lives in ./lib (ours; originally derived from MIT-licensed
+ * code, see lib/LICENSE). Only official dependencies: the Claude Agent SDK
+ * and zod, pinned exactly in package.json + package-lock.json.
  *
  * Auth note: `claude` 2.x stores OAuth in the macOS login keychain, so this
  * process must run inside the user's login session (spawned by the OpenCode
@@ -16,7 +17,10 @@
 import { homedir } from "node:os"
 
 process.env.OPENCODE_CLAUDE_PROXY_PORT ??= "8787"
-process.env.OPENCODE_CLAUDE_CWD ??= homedir()
+// Claude runs in the project directory the plugin sends per request; this is
+// only the fallback for requests without it (OPENCODE_CLAUDE_CWD would
+// override the per-request directory, so it is not set here).
+process.chdir(homedir())
 
 const PORT = process.env.OPENCODE_CLAUDE_PROXY_PORT
 
@@ -39,7 +43,7 @@ try {
 } catch {}
 
 const { startProxy, getClaudeProxyBaseUrl } = await import(
-  "./node_modules/@openchamber/opencode-claude/dist/proxy.js"
+  "./lib/proxy.ts"
 )
 
 const port = await startProxy()

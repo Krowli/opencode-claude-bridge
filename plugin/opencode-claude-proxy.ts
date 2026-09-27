@@ -10,6 +10,8 @@
  * OpenCode server (a user-session process) gives it that access, and the
  * server restarts it automatically on every launch.
  *
+ * It also tags every claude-code request with the headers the proxy needs.
+ *
  * The two constants below are filled in by `install.sh`.
  */
 import { Plugin } from "@opencode/plugin"
@@ -21,10 +23,32 @@ const PROXY_HOME = "__PROXY_HOME__"
 // eslint-disable-next-line no-unused-vars
 const BUN_BIN = "__BUN_BIN__"
 
+const EFFORTS = ["low", "medium", "high", "xhigh", "max"]
+
 export default Plugin.define({
   id: "opencode.claude-proxy",
 
-  setup() {
+  async setup(ctx) {
+    // The proxy needs these per request: without a session/kind it treats a
+    // chat turn as a tool-less one-shot, and effort must be base64url JSON
+    // {modelId, effort} (see proxy/lib/model-selection.ts).
+    await ctx.session.hook(
+      "model.request",
+      (request) => {
+        const effort = EFFORTS.includes(request.model.variant ?? "")
+          ? request.model.variant
+          : undefined
+        request.headers["x-opencode-claude-effort"] = Buffer.from(
+          JSON.stringify({ modelId: request.model.id, ...(effort ? { effort } : {}) }),
+          "utf8",
+        ).toString("base64url")
+        request.headers["x-opencode-claude-kind"] = request.kind
+        request.headers["x-opencode-claude-session"] = request.sessionID
+        request.headers["x-opencode-claude-directory"] = ctx.location.directory
+      },
+      { providerID: "claude-code" },
+    )
+
     const out = openSync(`${PROXY_HOME}/proxy.out.log`, "a")
     const err = openSync(`${PROXY_HOME}/proxy.err.log`, "a")
 

@@ -1,12 +1,12 @@
 # opencode-claude-bridge
 
 Use your **Claude Max subscription** (Claude Code CLI) inside **OpenCode V2** —
-no API key, no fork, no auto-updating third-party magic.
+no API key, no third-party packages at runtime, no auto-updates.
 
 ```
 OpenCode V2 (provider "claude-code", openai-compatible)
-  └─ plugin opencode.claude-proxy   (spawns the proxy in the user session)
-       └─ bun proxy.mjs  (127.0.0.1:8787)
+  └─ plugin opencode.claude-proxy   (spawns the proxy, tags each request)
+       └─ bun proxy.mjs → proxy/lib  (127.0.0.1:8787)
             └─ Claude Agent SDK → claude CLI (subscription OAuth)
 ```
 
@@ -19,9 +19,9 @@ OpenCode V2 (provider "claude-code", openai-compatible)
   launchd jobs can't read it ("Not logged in"). The plugin spawns the proxy as
   a child of the OpenCode **server** (a user-session process), which has
   keychain access and restarts it on every OpenCode launch.
-- **Pinned, local, auditable.** `@openchamber/opencode-claude@0.14.0` is pinned
-  exactly — no silent supply-chain updates. See [docs/AUDIT.md](docs/AUDIT.md)
-  for the line-by-line review we ran before first use.
+- **Our code, pinned deps.** The proxy lives in this repo (`proxy/lib`). Its
+  only dependencies are the official Claude Agent SDK and `zod`, pinned
+  exactly with a lockfile. See [docs/AUDIT.md](docs/AUDIT.md).
 - **Duplicate-safe.** If a healthy proxy already listens on `:8787` (e.g. after
   a server crash), a newly spawned instance checks `/health` and exits instead
   of stacking zombie listeners.
@@ -45,13 +45,13 @@ bash install.sh          # --dry-run to preview, --no-config to skip config
 
 `install.sh` (idempotent) does four things:
 
-1. Creates `~/.local/share/opencode-claude/` and installs the **pinned**
-   `@openchamber/opencode-claude@0.14.0` there.
+1. Copies the proxy (`proxy/proxy.mjs`, `proxy/lib`) to
+   `~/.local/share/opencode-claude/`, installs its pinned dependencies with
+   `npm ci`, and stops a running old proxy.
 2. Installs `@opencode/plugin` (V2 SDK) into `~/.config/opencode/node_modules`
    so the plugin file can resolve `import { Plugin } from "@opencode/plugin"`.
-3. Copies `proxy/proxy.mjs` and renders
-   `plugin/opencode-claude-proxy.ts` (its paths are filled in) into
-   `~/.config/opencode/plugins/`.
+3. Renders `plugin/opencode-claude-proxy.ts` and the update notice
+   `plugin/opencode-claude-update.tui.ts` into `~/.config/opencode/plugins/`.
 4. Merges the `claude-code` provider
    ([config/opencode.claude-code.json](config/opencode.claude-code.json)) into
    `~/.config/opencode/opencode.jsonc`. If your config is JSONC with comments,
@@ -75,44 +75,52 @@ Pick models in the TUI with `/models` → **Claude Code**.
 | `sonnet`     | 1M      | default, best speed/quality    |
 | `opus`       | 1M      | strongest reasoning            |
 | `fable`      | 1M      | alias → current flagship       |
-| `haiku`      | 200K    | cheap/fast                     |
+| `haiku`      | 200K    | cheap/fast, no effort variants |
 | `claude-opus-5-5[1m]` / `claude-fable-5-1[1m]` | 1M | Opus 5.5 / Fable 5.1 |
 | `claude-opus-4-8` / `claude-sonnet-4-6` | 1M | pinned explicit IDs |
 
-**Updating** (new models): `git pull && bash install.sh`, then restart OpenCode.
-The installer adds models missing from your `claude-code` provider and leaves
-existing entries untouched.
+Models ship **effort variants** (`low … max`, e.g. `claude-code/sonnet#high`);
+the plugin sends the chosen one to the proxy, which sets Claude's thinking effort.
 
-OpenCode shows a toast when this repo has new commits: on each launch the
-TUI plugin `plugins/opencode-claude-update/tui.ts` asks `api.github.com` for
-the latest `main` commit (nothing is sent but that request). Delete that
-folder to turn it off.
+## Updating
 
-Every model ships **effort variants** (`low … max`) that map to the
-`x-opencode-claude-effort` header, controlling Claude's adaptive thinking.
+```bash
+cd opencode-claude-bridge && git pull && bash install.sh   # then restart OpenCode
+```
+
+The installer adds new models to your `claude-code` provider, refreshes their
+variants and keeps your other edits. When a newer
+[release](https://github.com/Krowli/opencode-claude-bridge/releases) exists,
+OpenCode shows a toast with that command on launch (the TUI plugin
+`plugins/opencode-claude-update/tui.ts` asks `api.github.com` for the latest
+release; nothing else is sent). Delete that folder to turn it off.
+
+Publishing an update (maintainer): push to `main`, then
+`gh release create vX.Y.Z --generate-notes`.
 
 ## Repository layout
 
 ```
-proxy/proxy.mjs                     # runner (our fork-less integration + fixes)
-plugin/opencode-claude-proxy.ts     # V2 plugin: spawns the proxy, keychain-safe
+proxy/proxy.mjs                     # runner
+proxy/lib/                          # the proxy (OpenAI-compatible -> Agent SDK)
+proxy/test/                         # offline regression suite: cd proxy && bun test/run.ts
+plugin/opencode-claude-proxy.ts     # V2 plugin: spawns the proxy, request headers
+plugin/opencode-claude-update.tui.ts # release update notice (TUI toast)
 config/opencode.claude-code.json    # provider block for opencode.jsonc
 install.sh / uninstall.sh           # idempotent setup / teardown
 scripts/smoke-test.sh               # end-to-end verification
-docs/AUDIT.md                       # security review of the underlying package
+docs/AUDIT.md                       # security review
 ```
 
 ## Security
 
-- The proxy listens on **127.0.0.1** only; network egress from the bundled
-  package is to Anthropic domains only.
+- The proxy listens on **127.0.0.1** only and refuses browser-originated
+  requests; model traffic goes only through the official Agent SDK.
 - Credentials stay in the `claude` CLI's keychain store; nothing is copied to
   disk by this repo.
 - Version pins mean the running code only changes when **you** update it.
-- Third-party: the proxy runtime is MIT-licensed community software
-  ([@openchamber/opencode-claude](https://github.com/openchamber/opencode-claude)).
-  Using your subscription through it is a community-supported path via the
-  official Anthropic Agent SDK — check Anthropic's terms for your use case.
+- Using your subscription this way goes through the official Anthropic Agent
+  SDK — check Anthropic's terms for your use case.
 
 ## Uninstall
 
@@ -125,7 +133,7 @@ bash uninstall.sh
 # Русский
 
 Подключение **подписки Claude Max** к **OpenCode V2** через локальный прокси:
-без API-ключа, без форка, с закреплёнными версиями.
+без API-ключа, без сторонних пакетов, с закреплёнными версиями.
 
 ## Установка
 
@@ -136,7 +144,7 @@ bash install.sh        # --dry-run — показать план; --no-config �
 ```
 
 Скрипт идемпотентен и повторяет ровно то, что уже проверено на рабочей машине:
-прокси в `~/.local/share/opencode-claude/` (пин `0.14.0`), V2-плагин в
+прокси (`proxy/lib`, свой код) в `~/.local/share/opencode-claude/`, V2-плагин в
 `~/.config/opencode/plugins/`, провайдер `claude-code` в `opencode.jsonc`.
 
 ## Проверка
@@ -147,14 +155,23 @@ bash scripts/smoke-test.sh
 opencode run --model claude-code/sonnet "привет"
 ```
 
-Обновление (новые модели): `git pull && bash install.sh`, затем перезапустить OpenCode.
-Когда в репозитории есть новые коммиты, OpenCode при запуске покажет уведомление
-(плагин `plugins/opencode-claude-update/tui.ts` запрашивает последний коммит
-`main` у `api.github.com`). Чтобы отключить — удалить эту папку.
+## Обновление
+
+```bash
+cd opencode-claude-bridge && git pull && bash install.sh   # затем перезапустить OpenCode
+```
+
+Когда выходит новый [релиз](https://github.com/Krowli/opencode-claude-bridge/releases),
+OpenCode при запуске показывает уведомление с этой командой (плагин
+`plugins/opencode-claude-update/tui.ts` запрашивает последний релиз у
+`api.github.com`). Чтобы отключить — удалить эту папку.
+
+Выпустить обновление (мейнтейнер): запушить в `main`, затем
+`gh release create vX.Y.Z --generate-notes`.
 
 Модели: `sonnet`, `opus`, `fable`, `haiku`, `claude-opus-5-5[1m]` (Opus 5.5),
-`claude-fable-5-1[1m]` (Fable 5.1) (у каждой варианты усиления
-`low → max`). Выбор в TUI: `/models` → Claude Code.
+`claude-fable-5-1[1m]` (Fable 5.1). Варианты усиления `low → max`
+(у haiku нет), например `claude-code/sonnet#high`. Выбор в TUI: `/models` → Claude Code.
 
 ## Почему так устроено
 
@@ -163,10 +180,11 @@ opencode run --model claude-code/sonnet "привет"
 - **Не через launchd**: Claude Code 2.x хранит OAuth в macOS Keychain, а
   launchd-демоны изолированы от него. Плагин запускает прокси как дочерний
   процесс сервера OpenCode (пользовательская сессия → Keychain доступен).
-- **Пин-версии**: никаких автообновлений и сюрпризов в будущем.
+- **Свой код**: прокси лежит в репозитории (`proxy/lib`); зависимости —
+  только официальный Claude Agent SDK и `zod`, точные версии + lockfile.
 - Аудит кода: [docs/AUDIT.md](docs/AUDIT.md).
 
 ## Лицензия
 
-MIT. Прокси-рантайм — `@openchamber/opencode-claude` (MIT) + официальный
-Anthropic Claude Agent SDK.
+MIT. `proxy/lib` включает код под лицензией MIT — её текст в
+`proxy/lib/LICENSE`.

@@ -32,6 +32,12 @@ jobs:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
 
+      - name: Proxy regression tests
+        working-directory: proxy
+        run: |
+          npm ci --no-audit --no-fund
+          bun test/run.ts
+
       - name: Template render matches golden
         run: |
           sed -e 's|__PROXY_HOME__|/tmp/ocb-sample/proxy|g' \
@@ -58,15 +64,15 @@ jobs:
           export PLUGIN_DIR="$CONFIG_DIR/plugins"
           export OPENCODE_CONFIG="$CONFIG_DIR/opencode.jsonc"
           test -x "$PROXY_HOME/proxy.mjs"
-          test -d "$PROXY_HOME/node_modules/@openchamber/opencode-claude"
+          test -f "$PROXY_HOME/lib/proxy.ts"
+          test -d "$PROXY_HOME/node_modules/@anthropic-ai/claude-agent-sdk"
           test -f "$PLUGIN_DIR/opencode-claude-proxy.ts"
           upd="$PLUGIN_DIR/opencode-claude-update/tui.ts"
           test -f "$upd"
-          if grep -q '__INSTALLED_COMMIT__\|__REPO_DIR__' "$upd"; then
+          if grep -q '__INSTALLED_VERSION__\|__REPO_DIR__' "$upd"; then
             echo "update plugin placeholders not rendered" >&2
             exit 1
           fi
-          grep -q "$(git rev-parse HEAD)" "$upd"
           if grep -q '__PROXY_HOME__' "$PLUGIN_DIR/opencode-claude-proxy.ts"; then
             echo "placeholder left in rendered plugin" >&2
             exit 1

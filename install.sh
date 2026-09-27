@@ -12,12 +12,11 @@
 #   bash install.sh --no-config    do not touch opencode.jsonc
 #
 # Overrides (environment variables):
-#   PROXY_HOME      where the proxy + pinned npm package live (default: ~/.local/share/opencode-claude)
+#   PROXY_HOME      where the proxy + its pinned dependencies live (default: ~/.local/share/opencode-claude)
 #   CONFIG_DIR      OpenCode config directory (default: ~/.config/opencode)
 #   PLUGIN_DIR      OpenCode plugins directory (default: $CONFIG_DIR/plugins)
 #   OPENCODE_CONFIG path to opencode.jsonc (default: $CONFIG_DIR/opencode.jsonc)
 #   BUN_BIN         Bun executable (default: resolved via command -v)
-#   VERSION         pin of @openchamber/opencode-claude (default: 0.14.0)
 #   PLUGIN_SDK      pin of @opencode/plugin (default: 2.0.11)
 #
 set -euo pipefail
@@ -28,7 +27,6 @@ CONFIG_DIR="${CONFIG_DIR:-$HOME_dir/.config/opencode}"
 PLUGIN_DIR="${PLUGIN_DIR:-$CONFIG_DIR/plugins}"
 OPENCODE_CONFIG="${OPENCODE_CONFIG:-$CONFIG_DIR/opencode.jsonc}"
 BUN_BIN="${BUN_BIN:-$(command -v bun || true)}"
-VERSION="${VERSION:-0.14.0}"
 PLUGIN_SDK="${PLUGIN_SDK:-2.0.11}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -126,20 +124,21 @@ elif [ "$DRY_RUN" -eq 0 ]; then
   fi
 fi
 
-# --- 1/4 proxy runtime (pinned npm package) --------------------------------
+# --- 1/4 proxy runtime (our code + pinned official deps) -------------------
 say ""
-say "1/4  proxy runtime -> $PROXY_HOME  (@openchamber/opencode-claude@$VERSION, pinned)"
+say "1/4  proxy runtime -> $PROXY_HOME  (proxy/lib + Claude Agent SDK, lockfile-pinned)"
 mkdir -p "$PROXY_HOME"
-emit "$PROXY_HOME/package.json" <<EOF
-{
-  "name": "opencode-claude-proxy",
-  "private": true,
-  "dependencies": {
-    "@openchamber/opencode-claude": "$VERSION"
-  }
-}
-EOF
-npm_in "$PROXY_HOME"
+if [ "$DRY_RUN" -eq 1 ]; then
+  printf '%sdry-run:%s copy proxy/{proxy.mjs,lib,package.json,package-lock.json} -> %s; npm ci\n' "$c_dim" "$c_rst" "$PROXY_HOME"
+else
+  # Stop a running proxy so the next OpenCode start runs the new code
+  # (proxy.mjs exits early when a healthy one already owns the port).
+  pkill -f "$PROXY_HOME/proxy.mjs" 2>/dev/null || true
+  rm -rf "${PROXY_HOME:?}/lib"
+  cp -R "$SCRIPT_DIR/proxy/lib" "$PROXY_HOME/lib"
+  cp "$SCRIPT_DIR/proxy/package.json" "$SCRIPT_DIR/proxy/package-lock.json" "$PROXY_HOME/"
+  ( cd "$PROXY_HOME" && npm ci --omit=dev --no-audit --no-fund )
+fi
 
 # --- 2/4 plugin SDK (needed to resolve 'import { Plugin } from "@opencode/plugin"')
 say "2/4  plugin SDK -> $CONFIG_DIR/node_modules  (@opencode/plugin@$PLUGIN_SDK)"
@@ -160,10 +159,12 @@ mkdir -p "$PLUGIN_DIR"
 sed -e "s|__PROXY_HOME__|$PROXY_HOME|g" -e "s|__BUN_BIN__|$BUN_BIN|g" \
   "$SCRIPT_DIR/plugin/opencode-claude-proxy.ts" \
   | emit "$PLUGIN_DIR/opencode-claude-proxy.ts"
-# Update notice (TUI toast) — needs the commit this install came from.
-if INSTALLED_COMMIT="$(git -C "$SCRIPT_DIR" rev-parse HEAD 2>/dev/null)"; then
+# Update notice (TUI toast) — compares the release tag this install came
+# from (none before the first release) with the latest GitHub release.
+if git -C "$SCRIPT_DIR" rev-parse --git-dir >/dev/null 2>&1; then
+  INSTALLED_VERSION="$(git -C "$SCRIPT_DIR" describe --tags --abbrev=0 2>/dev/null || true)"
   mkdir -p "$PLUGIN_DIR/opencode-claude-update"
-  sed -e "s|__INSTALLED_COMMIT__|$INSTALLED_COMMIT|g" -e "s|__REPO_DIR__|$SCRIPT_DIR|g" \
+  sed -e "s|__INSTALLED_VERSION__|$INSTALLED_VERSION|g" -e "s|__REPO_DIR__|$SCRIPT_DIR|g" \
     "$SCRIPT_DIR/plugin/opencode-claude-update.tui.ts" \
     | emit "$PLUGIN_DIR/opencode-claude-update/tui.ts"
 else
@@ -191,16 +192,27 @@ cfg.providers = cfg.providers || {};
 const prov = JSON.parse(fs.readFileSync(provPath, "utf8"));
 const existing = cfg.providers["claude-code"];
 if (existing) {
-  // Re-run after `git pull`: add models released since, keep user edits.
+  // Re-run after `git pull`: add models released since and refresh variants
+  // (the plugin now sets the effort header); keep other user edits.
   existing.models = existing.models || {};
-  const added = Object.keys(prov["claude-code"].models).filter((id) => !(id in existing.models));
-  if (!added.length) {
+  const changed = [];
+  for (const [id, model] of Object.entries(prov["claude-code"].models)) {
+    const cur = existing.models[id];
+    if (!cur) {
+      existing.models[id] = model;
+      changed.push("+" + id);
+    } else if (JSON.stringify(cur.variants) !== JSON.stringify(model.variants)) {
+      if (model.variants) cur.variants = model.variants;
+      else delete cur.variants;
+      changed.push("~" + id);
+    }
+  }
+  if (!changed.length) {
     console.log("provider 'claude-code' up to date — nothing to do");
     process.exit(0);
   }
-  for (const id of added) existing.models[id] = prov["claude-code"].models[id];
   fs.writeFileSync(cfgPath, JSON.stringify(cfg, null, 2) + "\n");
-  console.log("added models to 'claude-code': " + added.join(", "));
+  console.log("updated models in 'claude-code' (+added ~variants): " + changed.join(", "));
   process.exit(0);
 }
 Object.assign(cfg.providers, prov);
@@ -225,4 +237,4 @@ echo "  1. Restart OpenCode (or wait for the config watcher to reload the plugin
 echo "  2. Verify:  curl -s http://127.0.0.1:8787/health"
 echo "  3. Smoke:   bash $SCRIPT_DIR/scripts/smoke-test.sh"
 echo "  4. Try:     opencode run --model claude-code/sonnet \"hello\""
-echo "Models: sonnet, opus, fable, haiku, Opus 5.5, Fable 5.1 (each with effort variants low -> max)."
+echo "Models: sonnet, opus, fable, haiku, Opus 5.5, Fable 5.1 (effort variants low -> max; haiku has none)."
