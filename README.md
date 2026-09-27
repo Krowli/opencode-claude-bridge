@@ -76,7 +76,12 @@ Pick models in the TUI with `/models` → **Claude Code**.
 | `opus`       | 1M      | strongest reasoning            |
 | `fable`      | 1M      | alias → current flagship       |
 | `haiku`      | 200K    | cheap/fast                     |
+| `claude-opus-5-5[1m]` / `claude-fable-5-1[1m]` | 1M | Opus 5.5 / Fable 5.1 |
 | `claude-opus-4-8` / `claude-sonnet-4-6` | 1M | pinned explicit IDs |
+
+**Updating** (new models): `git pull && bash install.sh`, then restart OpenCode.
+The installer adds models missing from your `claude-code` provider and leaves
+existing entries untouched.
 
 Every model ships **effort variants** (`low … max`) that map to the
 `x-opencode-claude-effort` header, controlling Claude's adaptive thinking.
@@ -137,7 +142,10 @@ bash scripts/smoke-test.sh
 opencode run --model claude-code/sonnet "привет"
 ```
 
-Модели: `sonnet`, `opus`, `fable`, `haiku` (у каждой варианты усиления
+Обновление (новые модели): `git pull && bash install.sh`, затем перезапустить OpenCode.
+
+Модели: `sonnet`, `opus`, `fable`, `haiku`, `claude-opus-5-5[1m]` (Opus 5.5),
+`claude-fable-5-1[1m]` (Fable 5.1) (у каждой варианты усиления
 `low → max`). Выбор в TUI: `/models` → Claude Code.
 
 ## Почему так устроено

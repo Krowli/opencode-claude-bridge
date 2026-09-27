@@ -82,7 +82,7 @@ jobs:
           fi
           echo "OpenTelemetry core $core_ver (>=2.8.0, hardened)"
           nmodels="$(node -e 'const c=JSON.parse(require("fs").readFileSync(process.env.OPENCODE_CONFIG,"utf8")); console.log(Object.keys(c.providers["claude-code"].models).length)')"
-          test "$nmodels" = "6"
+          test "$nmodels" = "8"
           echo "artifacts OK ($nmodels models)"
 
       - name: Idempotent re-run

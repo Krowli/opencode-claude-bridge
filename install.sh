@@ -179,11 +179,22 @@ if (/\/\/|\/\*/.test(body)) {
 }
 const cfg = JSON.parse(source);
 cfg.providers = cfg.providers || {};
-if (cfg.providers["claude-code"]) {
-  console.log("provider 'claude-code' already present — nothing to do");
+const prov = JSON.parse(fs.readFileSync(provPath, "utf8"));
+const existing = cfg.providers["claude-code"];
+if (existing) {
+  // Re-run after `git pull`: add models released since, keep user edits.
+  existing.models = existing.models || {};
+  const added = Object.keys(prov["claude-code"].models).filter((id) => !(id in existing.models));
+  if (!added.length) {
+    console.log("provider 'claude-code' up to date — nothing to do");
+    process.exit(0);
+  }
+  for (const id of added) existing.models[id] = prov["claude-code"].models[id];
+  fs.writeFileSync(cfgPath, JSON.stringify(cfg, null, 2) + "\n");
+  console.log("added models to 'claude-code': " + added.join(", "));
   process.exit(0);
 }
-Object.assign(cfg.providers, JSON.parse(fs.readFileSync(provPath, "utf8")));
+Object.assign(cfg.providers, prov);
 fs.writeFileSync(cfgPath, JSON.stringify(cfg, null, 2) + "\n");
 console.log("merged provider 'claude-code' into " + cfgPath);
 NODE
@@ -205,4 +216,4 @@ echo "  1. Restart OpenCode (or wait for the config watcher to reload the plugin
 echo "  2. Verify:  curl -s http://127.0.0.1:8787/health"
 echo "  3. Smoke:   bash $SCRIPT_DIR/scripts/smoke-test.sh"
 echo "  4. Try:     opencode run --model claude-code/sonnet \"hello\""
-echo "Models: sonnet, opus, fable, haiku (each with effort variants low -> max)."
+echo "Models: sonnet, opus, fable, haiku, Opus 5.5, Fable 5.1 (each with effort variants low -> max)."

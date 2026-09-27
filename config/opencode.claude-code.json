@@ -55,6 +55,30 @@
           { "id": "max", "headers": { "x-opencode-claude-effort": "max" } }
         ]
       },
+      "claude-opus-5-5[1m]": {
+        "name": "Opus 5.5",
+        "limit": { "context": 1000000, "output": 128000 },
+        "capabilities": { "tools": true, "input": ["text", "image"], "output": ["text"] },
+        "variants": [
+          { "id": "low", "headers": { "x-opencode-claude-effort": "low" } },
+          { "id": "medium", "headers": { "x-opencode-claude-effort": "medium" } },
+          { "id": "high", "headers": { "x-opencode-claude-effort": "high" } },
+          { "id": "xhigh", "headers": { "x-opencode-claude-effort": "xhigh" } },
+          { "id": "max", "headers": { "x-opencode-claude-effort": "max" } }
+        ]
+      },
+      "claude-fable-5-1[1m]": {
+        "name": "Fable 5.1",
+        "limit": { "context": 1000000, "output": 128000 },
+        "capabilities": { "tools": true, "input": ["text", "image"], "output": ["text"] },
+        "variants": [
+          { "id": "low", "headers": { "x-opencode-claude-effort": "low" } },
+          { "id": "medium", "headers": { "x-opencode-claude-effort": "medium" } },
+          { "id": "high", "headers": { "x-opencode-claude-effort": "high" } },
+          { "id": "xhigh", "headers": { "x-opencode-claude-effort": "xhigh" } },
+          { "id": "max", "headers": { "x-opencode-claude-effort": "max" } }
+        ]
+      },
       "claude-opus-4-8": {
         "name": "Opus 4.8",
         "limit": { "context": 1000000, "output": 128000 },
